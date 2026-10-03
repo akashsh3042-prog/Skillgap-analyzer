@@ -65,6 +65,32 @@ Respond STRICTLY with valid JSON (no markdown wrapping, no text before or after)
   "missing_skills": [
     {{ "name": string, "priority": "High Priority"|"Medium Priority"|"Low Priority", "category": string, "hoursToLearn": integer, "impact": string }}
   ],
+  "suggestions": [
+    {{
+      "id": string,
+      "skillName": string,
+      "category": string,
+      "priority": "High Priority"|"Medium Priority"|"Low Priority",
+      "estimatedDuration": string,
+      "difficulty": "Beginner"|"Intermediate"|"Advanced",
+      "description": string,
+      "keyTopics": [string],
+      "courses": [
+        {{
+          "title": string,
+          "platform": string,
+          "instructor": string,
+          "rating": float,
+          "reviewsCount": integer,
+          "duration": string,
+          "price": string,
+          "isFree": boolean,
+          "url": string
+        }}
+      ],
+      "projectIdea": string
+    }}
+  ],
   "roadmap": [
     {{
       "id": string,
@@ -175,7 +201,8 @@ def analyze_with_heuristics(resume_text: str, job_description: str) -> Dict[str,
     total_req = len(matched) + len(missing)
     score = Math_score = min(96, max(40, int((len(matched) / max(1, total_req)) * 100)))
 
-    return {
+    # Set suggestions alias for frontend compatibility
+    res_dict = {
         "match_score": Math_score,
         "readiness_rating": "Strong Alignment" if Math_score >= 75 else "Moderate Gap" if Math_score >= 55 else "Action Required",
         "summary": f"Your candidate profile matches {Math_score}% of the target requirements. You have {len(matched)} matching skills and {len(missing)} targeted skill gaps to bridge.",
@@ -192,8 +219,10 @@ def analyze_with_heuristics(resume_text: str, job_description: str) -> Dict[str,
         ],
         "matched_skills": matched,
         "missing_skills": missing,
+        "suggestions": roadmap,
         "roadmap": roadmap
     }
+    return res_dict
 
 def analyze_skill_gap(resume_text: str, job_description: str) -> Dict[str, Any]:
     """Main skill gap analysis dispatcher with LLM primary and fallback parser."""

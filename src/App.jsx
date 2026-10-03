@@ -5,37 +5,37 @@ import ResultsSection from './components/ResultsSection';
 import RoadmapSection from './components/RoadmapSection';
 import LoadingModal from './components/LoadingModal';
 import Footer from './components/Footer';
-import { SAMPLE_PROFILES, analyzeCustomInput } from './data/mockData';
-
-const API_BASE_URL = 'http://localhost:8000';
+import { analyzeSkillsApi } from './services/api';
+import { SAMPLE_PROFILES } from './data/mockData';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('upload');
   
-  // Input States
+  // Form Input States
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeText, setResumeText] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   
-  // Analysis & Error States
+  // API Response & UI States
   const [analysisResult, setAnalysisResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const [isUsingBackend, setIsUsingBackend] = useState(false);
   
-  // Roadmap Progress State
+  // Roadmap Completion Progress Tracker State
   const [completedSkillIds, setCompletedSkillIds] = useState([]);
 
-  // Format backend API response schema to match frontend component prop expectations
+  // Map API response to match UI component expectations
   const formatApiResponse = (data) => {
+    const suggestionsList = data.suggestions || data.roadmap || [];
+
     return {
-      matchScore: data.match_score ?? data.matchScore ?? 75,
-      readinessRating: data.readiness_rating ?? data.readinessRating ?? 'Strong Alignment',
+      matchScore: data.match_score ?? data.matchScore ?? 0,
+      readinessRating: data.readiness_rating ?? data.readinessRating ?? 'Moderate Gap',
       summary: data.summary ?? 'Skill gap analysis complete.',
       stats: {
-        totalRequired: data.stats?.total_required ?? data.stats?.totalRequired ?? 10,
-        matchedCount: data.stats?.matched_count ?? data.stats?.matchedCount ?? 7,
-        missingCount: data.stats?.missing_count ?? data.stats?.missingCount ?? 3,
+        totalRequired: data.stats?.total_required ?? data.stats?.totalRequired ?? ((data.matched_skills?.length || 0) + (data.missing_skills?.length || 0)),
+        matchedCount: data.stats?.matched_count ?? data.stats?.matchedCount ?? (data.matched_skills?.length || 0),
+        missingCount: data.stats?.missing_count ?? data.stats?.missingCount ?? (data.missing_skills?.length || 0),
       },
       categories: data.categories || [],
       matchedSkills: (data.matched_skills || data.matchedSkills || []).map(s => ({
@@ -51,14 +51,14 @@ export default function App() {
         hoursToLearn: s.hoursToLearn ?? s.hours_to_learn ?? 12,
         impact: s.impact || '+10% Match'
       })),
-      roadmap: (data.roadmap || []).map((r, idx) => ({
+      roadmap: suggestionsList.map((r, idx) => ({
         id: r.id || `roadmap-${idx}`,
         skillName: r.skillName || r.skill_name || 'Skill',
         category: r.category || 'Technical',
         priority: r.priority || 'High Priority',
         estimatedDuration: r.estimatedDuration || r.estimated_duration || '2 Weeks',
         difficulty: r.difficulty || 'Intermediate',
-        description: r.description || 'Master this skill.',
+        description: r.description || 'Master this skill to meet role requirements.',
         keyTopics: r.keyTopics || r.key_topics || [],
         courses: r.courses || [],
         projectIdea: r.projectIdea || r.project_idea || 'Build a practical portfolio project.'
@@ -66,69 +66,40 @@ export default function App() {
     };
   };
 
-  // Submit analysis request to FastAPI backend with client-side fallback
+  // Trigger analysis call to FastAPI backend
   const handleAnalyze = async () => {
     setErrorMessage('');
 
-    if (!resumeFile && !resumeText.trim()) {
-      setErrorMessage('Please upload a resume file (PDF/DOCX) or paste your resume text before analyzing.');
+    // Client-side validations
+    if (!resumeFile && (!resumeText || !resumeText.trim())) {
+      setErrorMessage('No file selected or resume text provided. Please upload a PDF/DOCX resume or paste text.');
       return;
     }
 
-    if (!jobDescription.trim()) {
-      setErrorMessage('Please paste the target job description to run the skill comparison.');
+    if (!jobDescription || !jobDescription.trim()) {
+      setErrorMessage('Empty job description. Please paste the target job description before analyzing.');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const formData = new FormData();
-      if (resumeFile) {
-        formData.append('resume_file', resumeFile);
-      }
-      formData.append('resume_text', resumeText);
-      formData.append('job_description', jobDescription);
-
-      logger_log('Sending POST request to FastAPI backend http://localhost:8000/analyze');
-
-      const response = await fetch(`${API_BASE_URL}/analyze`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ detail: 'Backend server error' }));
-        throw new Error(errorData.detail || `Server returned error status ${response.status}`);
-      }
-
-      const rawData = await response.json();
-      const formatted = formatApiResponse(rawData);
+      // Call backend API helper
+      const apiResponse = await analyzeSkillsApi(resumeFile, resumeText, jobDescription);
       
+      const formatted = formatApiResponse(apiResponse);
       setAnalysisResult(formatted);
-      setIsUsingBackend(true);
       setIsLoading(false);
       setActiveTab('results');
 
     } catch (err) {
-      console.warn('FastAPI backend API fetch failed or server offline. Using client-side fallback engine.', err);
-      
-      // Fallback parser so the web app works reliably even if backend server is starting
-      setTimeout(() => {
-        const fallbackResult = analyzeCustomInput(resumeText || resumeFile?.name || '', jobDescription);
-        setAnalysisResult(fallbackResult);
-        setIsUsingBackend(false);
-        setIsLoading(false);
-        setActiveTab('results');
-      }, 1500);
+      console.error('SkillGap Analysis Error:', err);
+      setIsLoading(false);
+      setErrorMessage(err.message || 'An unexpected error occurred during analysis.');
     }
   };
 
-  function logger_log(msg) {
-    console.log('[SkillGap API]', msg);
-  }
-
-  // Preset sample loader
+  // Preset sample loader (loads sample text into inputs and calls API)
   const handleLoadSampleProfile = (profile) => {
     setErrorMessage('');
     setResumeFile({ name: profile.resumeFileName, size: 45800, type: 'application/pdf' });
@@ -136,13 +107,12 @@ export default function App() {
     setJobDescription(profile.jobDescription);
     setAnalysisResult(profile.analysisResult);
     setCompletedSkillIds([]);
-    setIsUsingBackend(false);
     
     setIsLoading(true);
     setTimeout(() => {
       setIsLoading(false);
       setActiveTab('results');
-    }, 1200);
+    }, 1000);
   };
 
   // Reset inputs
@@ -153,7 +123,6 @@ export default function App() {
     setAnalysisResult(null);
     setErrorMessage('');
     setCompletedSkillIds([]);
-    setIsUsingBackend(false);
     setActiveTab('upload');
   };
 
@@ -176,7 +145,7 @@ export default function App() {
         onReset={handleReset}
       />
 
-      {/* Main View Area */}
+      {/* Main View Container */}
       <main className="mb-auto">
         {activeTab === 'upload' && (
           <UploadSection
@@ -210,7 +179,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Animated Loading Overlay */}
+      {/* Animated Loading Overlay Spinner */}
       {isLoading && <LoadingModal />}
 
       {/* Footer */}

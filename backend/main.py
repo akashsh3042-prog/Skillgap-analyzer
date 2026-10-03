@@ -21,10 +21,18 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Enable CORS for frontend integration
+# Explicit CORS configuration allowing Vite dev server (5173) and React dev server (3000)
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "*"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows requests from localhost:3000, 5173, etc.
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,40 +58,55 @@ async def analyze_skills(
     POST /analyze endpoint:
     - Accepts uploaded PDF/DOCX resume file or raw resume_text string.
     - Accepts job_description text.
-    - Returns match score, matched skills, missing skills, category breakdown, and course roadmap.
+    - Returns JSON: { match_score, matched_skills, missing_skills, suggestions / roadmap, summary, readiness_rating }
     """
     extracted_resume_text = ""
 
-    # Parse uploaded file if present
+    # 1. Parse uploaded resume file if provided
     if resume_file:
         try:
             file_bytes = await resume_file.read()
+            if not file_bytes:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Uploaded file is empty (0 bytes)."
+                )
+            
             extracted_resume_text = parse_document(file_bytes, resume_file.filename)
-            logger.info(f"Extracted {len(extracted_resume_text)} chars from uploaded file '{resume_file.filename}'.")
+            
+            if not extracted_resume_text or not extracted_resume_text.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unreadable PDF or document file '{resume_file.filename}'. Could not extract text from document."
+                )
+
+            logger.info(f"Successfully extracted {len(extracted_resume_text)} chars from file '{resume_file.filename}'.")
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error parsing resume file: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Could not parse resume file '{resume_file.filename}': {str(e)}"
+                detail=f"Unreadable PDF or corrupted document '{resume_file.filename}': {str(e)}"
             )
 
-    # Fallback to resume_text form field if file wasn't uploaded or extracted text was small
+    # 2. Fallback to resume_text form string if file wasn't provided
     if not extracted_resume_text and resume_text:
         extracted_resume_text = resume_text.strip()
 
     if not extracted_resume_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Please provide a valid resume file (PDF/DOCX) or paste resume text."
+            detail="No file selected or resume text provided. Please upload a PDF/DOCX resume or paste text."
         )
 
     if not job_description or not job_description.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Job description text is required."
+            detail="Job description text cannot be empty."
         )
 
-    # Perform analysis
+    # 3. Perform AI / NLP Skill Gap Analysis
     try:
         result = analyze_skill_gap(extracted_resume_text, job_description)
         return result
