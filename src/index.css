@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-800 antialiased font-sans selection:bg-sky-500 selection:text-white;
+  }
+}
+
+/* Custom animations and glow effects */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(224, 242, 254, 0.7);
+}
+
+.sky-glow {
+  box-shadow: 0 0 25px -5px rgba(14, 165, 233, 0.25);
+}
+
+.sky-glow-lg {
+  box-shadow: 0 0 40px -5px rgba(14, 165, 233, 0.35);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 50%, #0f172a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Gauge circle animation */
+.circle-chart-circle {
+  transition: stroke-dashoffset 1.2s ease-in-out;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0ea5e9;
+}
